@@ -1,0 +1,6 @@
+framework module Pods_FRCDemo {
+  umbrella header "Pods-FRCDemo-umbrella.h"
+
+  export *
+  module * { export * }
+}
