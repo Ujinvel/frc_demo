@@ -11,8 +11,7 @@ import RxSwift
 import RxCocoa
 
 extension Reactive where Base: FetchRequest  {
-    func observe(from dataBase: Database,
-                 on queue: DispatchQueue? = nil) -> Observable<Updates<Base.RequestResult.Entity>>
+    func observe(from dataBase: Database) -> Observable<Updates<Base.RequestResult.Entity>>
     {
         Observable.create { [base] observer in
             let id = NSUUID().uuidString
@@ -49,14 +48,8 @@ extension Reactive where Base: FetchRequest  {
                 }
             }
 
-            if let queue = queue {
-                queue.async {
-                    perform()
-                }
-            } else {
-                perform()
-            }
-            
+            dataBase.performQueue.async(execute: perform)
+
             return Disposables.create {
                 dataBase.removeObserver(on: id)
             }
@@ -65,28 +58,47 @@ extension Reactive where Base: FetchRequest  {
 }
 
 extension Reactive where Base: FetchRequest  {
-    func fetch(from dataBase: Database,
-               on queue: DispatchQueue? = nil) -> Observable<[Base.RequestResult.Entity]>
+    func fetch(from dataBase: Database) -> Observable<[Base.RequestResult.Entity]>
     {
         Observable.create { [base] observer in
-            let perform: () -> Void = {
-                dataBase.perform { context in
-                    do {
-                        observer.onNext(try context.fetch(base.fetchRequest)
-                            .map { $0.toEntity() })
+            dataBase.perform { context in
+                do {
+                    let result = try context
+                        .fetch(base.fetchRequest)
+                        .map { $0.toEntity() }
+                    
+                    dataBase.performQueue.async {
+                        observer.onNext(result)
                         observer.onCompleted()
-                    } catch {
+                    }
+                } catch {
+                    dataBase.performQueue.async {
                         observer.onError(error)
                     }
                 }
-            }   
+            }
             
-            if let queue = queue {
-                queue.async {
-                    perform()
+            return Disposables.create()
+        }
+    }
+    
+    func fetchIfExist(from dataBase: Database) -> Observable<Base.RequestResult.Entity?>
+    {
+        Observable.create { [base] observer in
+            dataBase.perform { context in
+                do {
+                    let result = try context.fetch(base.fetchRequest)
+                        .first
+                        .map { $0.toEntity() }
+                    dataBase.performQueue.async {
+                        observer.onNext(result)
+                        observer.onCompleted()
+                    }
+                } catch {
+                    dataBase.performQueue.async {
+                        observer.onError(error)
+                    }
                 }
-            } else {
-                perform()
             }
             
             return Disposables.create()
